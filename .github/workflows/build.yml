@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   generar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 340
     env:
       GH_TOKEN: ${{ github.token }}
@@ -23,10 +23,10 @@ jobs:
       TAG: diccionarios
     steps:
       - name: Bajar el script
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Preparar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 

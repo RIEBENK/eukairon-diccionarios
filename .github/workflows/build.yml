@@ -1,0 +1,62 @@
+name: Generar diccionarios
+
+# Se ejecuta solo a mano: pestaña «Actions» → «Generar diccionarios» → «Run workflow».
+on:
+  workflow_dispatch:
+    inputs:
+      idiomas:
+        description: "Idiomas a generar, separados por espacios (ej.: es  —  o todos: es en pt de fr el it nl ja id tr pl)"
+        required: true
+        default: "es"
+
+# Permiso para publicar los archivos en «Releases».
+permissions:
+  contents: write
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IDIOMAS: ${{ inputs.idiomas }}
+      TAG: diccionarios
+    steps:
+      - name: Bajar el script
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Traer el índice publicado (si ya existe)
+        run: |
+          mkdir -p previo dist
+          gh release download "$TAG" --pattern index.json --dir previo --repo "$GITHUB_REPOSITORY" || echo "Todavía no hay índice publicado: se crea uno nuevo."
+
+      - name: Generar los diccionarios
+        run: python build_dictionary.py --langs "$IDIOMAS" --out dist --index-in previo/index.json
+
+      - name: Publicar en Releases
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Diccionarios de Eukairon" \
+              --notes "Paquetes de diccionario por idioma para la app Eukairon. Datos de Wiktionary (CC BY-SA 4.0), procesados con wiktextract (kaikki.org)."
+          fi
+          gh release upload "$TAG" dist/*.db.gz dist/index.json --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Resumen
+        run: |
+          echo "## Diccionarios publicados" >> "$GITHUB_STEP_SUMMARY"
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          idx = json.load(open("dist/index.json", encoding="utf-8"))
+          pedidos = os.environ["IDIOMAS"].split()
+          print("| Idioma | Palabras | Con ejemplo | Formas | Descarga | Instalado |")
+          print("|---|---|---|---|---|---|")
+          for code, i in sorted(idx["languages"].items()):
+              marca = " (nuevo)" if code in pedidos else ""
+              print(f"| {code}{marca} | {i['entries']:,} | {i['entries_with_example']:,} | {i['forms']:,} | {i['bytes']/1e6:.1f} MB | {i['db_bytes']/1e6:.1f} MB |")
+          EOF
